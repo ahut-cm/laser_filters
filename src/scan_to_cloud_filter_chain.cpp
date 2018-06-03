@@ -51,6 +51,19 @@
 //Filters
 #include "filters/filter_chain.h"
 
+//pcl
+#include <pcl/point_cloud.h>    
+#include <pcl_conversions/pcl_conversions.h>    
+#include <pcl/io/pcd_io.h>    
+#include <pcl/filters/passthrough.h>
+#include <pcl/visualization/cloud_viewer.h>    
+#include <vector>
+#include <pcl/point_types.h>
+#include <pcl/common/common.h>  
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/radius_outlier_removal.h>
+ 
+ using namespace pcl;
 /** @b ScanShadowsFilter is a simple node that filters shadow points in a laser scan line and publishes the results in a cloud.
  */
 class ScanToCloudFilterChain
@@ -77,6 +90,8 @@ public:
   tf::MessageFilter<sensor_msgs::LaserScan> filter_;
 
   double tf_tolerance_;
+  double RadiusSearch_;
+  int MinNeighborsInRadius_;
   filters::FilterChain<sensor_msgs::PointCloud2> cloud_filter_chain_;
   filters::FilterChain<sensor_msgs::LaserScan> scan_filter_chain_;
   ros::Publisher cloud_pub_;
@@ -121,6 +136,9 @@ public:
     private_nh.param("scan_topic", scan_topic_, std::string("tilt_scan"));
     private_nh.param("cloud_topic", cloud_topic_, std::string("tilt_laser_cloud_filtered"));
     private_nh.param("incident_angle_correction", incident_angle_correction_, true);
+    private_nh.param("MinNeighborsInRadius_", MinNeighborsInRadius_, 5);
+    private_nh.param("RadiusSearch_", RadiusSearch_, 0.3);
+
 
     filter_.setTargetFrame(target_frame_);
     filter_.registerCallback(boost::bind(&ScanToCloudFilterChain::scanCallback, this, _1));
@@ -237,10 +255,26 @@ public:
       projector_.transformLaserScanToPointCloud(target_frame_, filtered_scan, scan_cloud, tf_, laser_max_range_, mask);
     }
       
-    sensor_msgs::PointCloud2 filtered_cloud;
+    sensor_msgs::PointCloud2 filtered_cloud; 
     cloud_filter_chain_.update (scan_cloud, filtered_cloud);
+    
+    pcl::PCLPointCloud2* cloud =new pcl::PCLPointCloud2;
+    pcl::PCLPointCloud2ConstPtr cloudPtr(cloud);
+    pcl::PCLPointCloud2 cloud_filtered;
 
-    cloud_pub_.publish(filtered_cloud);
+     pcl_conversions::toPCL(filtered_cloud,*cloud);
+        ///pcl::PassThrough<pcl::PointXYZ> pass;
+     pcl::RadiusOutlierRemoval<pcl::PCLPointCloud2> outrem;
+     outrem.setInputCloud(cloudPtr);
+     outrem.setRadiusSearch(RadiusSearch_);
+     outrem.setMinNeighborsInRadius(MinNeighborsInRadius_);
+     outrem.filter(cloud_filtered);
+     sensor_msgs::PointCloud2 out_put;  
+     pcl_conversions::fromPCL(cloud_filtered,out_put);
+     out_put.header.frame_id = std::string("base_link");
+     cloud_pub_.publish(out_put);
+
+    //cloud_pub_.publish(filtered_cloud);
   }
 
 } ;
